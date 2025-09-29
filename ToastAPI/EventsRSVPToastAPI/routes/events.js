@@ -1,13 +1,13 @@
+//Imports
 const express = require('express');
 const router = express.Router();
 const { db } = require('../models/firebase');
 const auth = require('../middleware/auth');
 
-// DEBUG: Add this to see if the route is being hit
+// Checks if the route is being hit
 console.log('✅ Events router loaded');
 
-// TEST ROUTES - Add these temporarily for debugging
-// Test route without authentication
+// Test route without authentication 
 router.get('/test-no-auth', (req, res) => {
   console.log('✅ /api/events/test-no-auth route hit!');
   res.json({ message: 'Test no auth works!' });
@@ -24,7 +24,7 @@ router.get('/test-with-auth', auth, (req, res) => {
   });
 });
 
-// GET all events for a user
+// GET all events for an authenticated user
 router.get('/', auth, async (req, res) => {
   console.log('🔍 GET /api/events route hit!');
   console.log('👤 User UID:', req.user.uid);
@@ -55,7 +55,7 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Create a new event WITH polls and manual Google Drive link
+// Create a new event with polls and manual Google Drive link
 router.post('/', auth, async (req, res) => {
   console.log('🔍 POST /api/events route hit!');
   console.log('👤 User UID:', req.user.uid);
@@ -72,7 +72,7 @@ router.post('/', auth, async (req, res) => {
       // POLL FEATURES
       dietaryRequirements = [],  
       musicSuggestions = [],     
-      // MANUAL GOOGLE DRIVE LINK (like your Android app)
+      // MANUAL GOOGLE DRIVE LINK 
       googleDriveLink = ""
     } = req.body;
     
@@ -87,7 +87,7 @@ router.post('/', auth, async (req, res) => {
       dietaryRequirements: Array.isArray(dietaryRequirements) ? dietaryRequirements : [],
       musicSuggestions: Array.isArray(musicSuggestions) ? musicSuggestions : [],
       pollResponses: {},
-      // SIMPLE GOOGLE DRIVE LINK (user provides it manually)
+      // SIMPLE GOOGLE DRIVE LINK 
       googleDriveLink: googleDriveLink,
       // BASIC INFO
       hostUserId: req.user.uid,
@@ -97,6 +97,7 @@ router.post('/', auth, async (req, res) => {
     };
     
     console.log('📝 Creating event in Firestore...');
+
     // Create the event in Firebase
     const docRef = await db.collection('events').add(eventData);
     const eventId = docRef.id;
@@ -283,7 +284,7 @@ router.get('/:eventId/poll-results', auth, async (req, res) => {
   }
 });
 
-// SPECIAL: Just update the Google Drive link for an event
+// Just update the Google Drive link for an event
 router.patch('/:id/drive-link', auth, async (req, res) => {
   console.log(`🔍 PATCH /api/events/${req.params.id}/drive-link route hit!`);
   
