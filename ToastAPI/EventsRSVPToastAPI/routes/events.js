@@ -324,4 +324,77 @@ router.patch('/:id/drive-link', auth, async (req, res) => {
 
 console.log('✅ All events routes defined');
 
+    // Serve a simple RSVP page for a given event
+router.get('/share/:eventId', async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+    const eventDoc = await db.collection('events').doc(eventId).get();
+
+    if (!eventDoc.exists) {
+      return res.status(404).send('<h1>Event not found</h1>');
+    }
+
+    const event = eventDoc.data();
+
+    // Basic HTML page matching your Android layout
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>${event.title} - RSVP</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 16px; background: #fff; color: #000; }
+          h1 { font-size: 28px; }
+          .section { margin-top: 16px; }
+          button { margin: 4px; padding: 8px 16px; font-size: 16px; }
+        </style>
+      </head>
+      <body>
+        <h1>${event.title}</h1>
+        <p><strong>Date:</strong> ${event.date} ${event.time}</p>
+        <p><strong>Location:</strong> ${event.location}</p>
+        <p><strong>Description:</strong> ${event.description}</p>
+        <p><strong>Going:</strong> ${event.attendeeCount || 0}</p>
+
+        <div class="section">
+          <h3>RSVP</h3>
+          <button onclick="submitRSVP('going')">Going</button>
+          <button onclick="submitRSVP('maybe')">Maybe</button>
+          <button onclick="submitRSVP('not going')">Can't Go</button>
+        </div>
+
+        <div class="section">
+          <a href="${event.googleDriveLink || '#'}" target="_blank">
+            <button>View Event Photos (Google Drive)</button>
+          </a>
+        </div>
+
+        <script>
+          async function submitRSVP(status) {
+            try {
+              const response = await fetch('${process.env.API_BASE_URL}/api/rsvps/${eventId}', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ status })
+              });
+              const data = await response.json();
+              alert(data.message || 'RSVP submitted!');
+            } catch (err) {
+              alert('Failed to submit RSVP');
+            }
+          }
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (err) {
+    res.status(500).send('<h1>Server error</h1>');
+  }
+});
+
+
 module.exports = router;
