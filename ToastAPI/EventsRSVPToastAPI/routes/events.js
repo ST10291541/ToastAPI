@@ -39,15 +39,81 @@ router.get('/share/:eventId', async (req, res) => {
 
     const event = eventDoc.data();
 
+    // HTML page for RSVP
     res.send(`
       <!DOCTYPE html>
       <html lang="en">
-      <head><meta charset="UTF-8"><title>${event.title} - RSVP</title></head>
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>${event.title} - RSVP</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 16px; background: #fff; color: #000; }
+          h1 { font-size: 28px; }
+          label { font-weight: bold; margin-top: 12px; display: block; }
+          input, select, button { margin-top: 6px; padding: 8px; width: 100%; max-width: 400px; }
+          button { cursor: pointer; }
+          .section { margin-top: 16px; }
+        </style>
+      </head>
       <body>
         <h1>${event.title}</h1>
         <p><strong>Date:</strong> ${event.date} ${event.time}</p>
         <p><strong>Location:</strong> ${event.location}</p>
         <p><strong>Description:</strong> ${event.description}</p>
+        <p><strong>Going:</strong> ${event.attendeeCount || 0}</p>
+
+        <div class="section">
+          <label>Dietary Requirement / Option:</label>
+          <select id="dietary">
+            <option value="">Select an option</option>
+            <option value="Vegetarian">Vegetarian</option>
+            <option value="Vegan">Vegan</option>
+            <option value="Gluten-Free">Gluten-Free</option>
+            <option value="None">None</option>
+          </select>
+        </div>
+
+        <div class="section">
+          <label>Song Suggestion:</label>
+          <input type="text" id="song" placeholder="Suggest a song, artist, or genre" />
+        </div>
+
+        <div class="section">
+          <button onclick="submitRSVP('going')">Going</button>
+          <button onclick="submitRSVP('maybe')">Maybe</button>
+          <button onclick="submitRSVP('not going')">Can't Go</button>
+        </div>
+
+        <div class="section">
+          <a href="${event.googleDriveLink || '#'}" target="_blank">
+            <button>View Event Photos (Google Drive)</button>
+          </a>
+        </div>
+
+        <script>
+          async function submitRSVP(status) {
+            const dietary = document.getElementById('dietary').value;
+            const song = document.getElementById('song').value;
+
+            try {
+              const response = await fetch('${process.env.API_BASE_URL}/api/rsvps/${eventId}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  status,
+                  dietaryChoice: dietary,
+                  musicChoice: song
+                })
+              });
+
+              const data = await response.json();
+              alert(data.message || 'RSVP submitted!');
+            } catch (err) {
+              alert('Failed to submit RSVP');
+            }
+          }
+        </script>
       </body>
       </html>
     `);
