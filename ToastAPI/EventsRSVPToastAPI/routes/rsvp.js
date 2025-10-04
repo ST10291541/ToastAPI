@@ -28,6 +28,8 @@ router.post('/:eventId', auth, async (req, res) => {
       userId: req.user.uid,
       userName: req.user.name || req.user.email,
       status,
+      dietaryChoice: req.body.dietaryChoice || null,
+      musicChoice: req.body.musicChoice || null,
       responseDate: new Date().toISOString()
     });
 
