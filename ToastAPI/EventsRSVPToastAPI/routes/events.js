@@ -28,6 +28,7 @@ router.get('/test-with-auth', auth, (req, res) => {
 // ------------------------
 // SHARE RSVP PAGE (Must be before /:id route!)
 // ------------------------
+// SHARE RSVP PAGE (Must be before /:id route!)
 router.get('/share/:eventId', async (req, res) => {
   try {
     const eventId = req.params.eventId;
@@ -38,6 +39,7 @@ router.get('/share/:eventId', async (req, res) => {
     }
 
     const event = eventDoc.data();
+    const dietaryOptions = event.dietaryRequirements || [];
 
     // HTML page for RSVP
     res.send(`
@@ -67,10 +69,7 @@ router.get('/share/:eventId', async (req, res) => {
           <label>Dietary Requirement / Option:</label>
           <select id="dietary">
             <option value="">Select an option</option>
-            <option value="Vegetarian">Vegetarian</option>
-            <option value="Vegan">Vegan</option>
-            <option value="Gluten-Free">Gluten-Free</option>
-            <option value="None">None</option>
+            ${dietaryOptions.map(option => `<option value="${option}">${option}</option>`).join('')}
           </select>
         </div>
 
@@ -80,21 +79,29 @@ router.get('/share/:eventId', async (req, res) => {
         </div>
 
         <div class="section">
-          <button onclick="submitRSVP('going')">Going</button>
-          <button onclick="submitRSVP('maybe')">Maybe</button>
-          <button onclick="submitRSVP('not going')">Can't Go</button>
+          <label>RSVP Status:</label>
+          <select id="rsvpStatus">
+            <option value="">Select your status</option>
+            <option value="going">Going</option>
+            <option value="maybe">Maybe</option>
+            <option value="not going">Can't Go</option>
+          </select>
         </div>
 
         <div class="section">
-          <a href="${event.googleDriveLink || '#'}" target="_blank">
-            <button>View Event Photos (Google Drive)</button>
-          </a>
+          <button id="submitRSVPButton">Submit RSVP</button>
         </div>
 
         <script>
-          async function submitRSVP(status) {
+          document.getElementById('submitRSVPButton').addEventListener('click', async () => {
             const dietary = document.getElementById('dietary').value;
             const song = document.getElementById('song').value;
+            const status = document.getElementById('rsvpStatus').value;
+
+            if (!status) {
+              alert('Please select your RSVP status.');
+              return;
+            }
 
             try {
               const response = await fetch('${process.env.API_BASE_URL}/api/rsvps/${eventId}', {
@@ -108,12 +115,14 @@ router.get('/share/:eventId', async (req, res) => {
               });
 
               const data = await response.json();
-              alert(data.message || 'RSVP submitted!');
+              alert(data.message || 'RSVP submitted successfully!');
             } catch (err) {
               alert('Failed to submit RSVP');
+              console.error(err);
             }
-          }
+          });
         </script>
+
       </body>
       </html>
     `);
