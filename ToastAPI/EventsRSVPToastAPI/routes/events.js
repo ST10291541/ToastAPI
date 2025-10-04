@@ -39,56 +39,15 @@ router.get('/share/:eventId', async (req, res) => {
 
     const event = eventDoc.data();
 
-    // Basic HTML page for RSVP
     res.send(`
       <!DOCTYPE html>
       <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>${event.title} - RSVP</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 16px; background: #fff; color: #000; }
-          h1 { font-size: 28px; }
-          .section { margin-top: 16px; }
-          button { margin: 4px; padding: 8px 16px; font-size: 16px; cursor: pointer; }
-        </style>
-      </head>
+      <head><meta charset="UTF-8"><title>${event.title} - RSVP</title></head>
       <body>
         <h1>${event.title}</h1>
         <p><strong>Date:</strong> ${event.date} ${event.time}</p>
         <p><strong>Location:</strong> ${event.location}</p>
         <p><strong>Description:</strong> ${event.description}</p>
-        <p><strong>Going:</strong> ${event.attendeeCount || 0}</p>
-
-        <div class="section">
-          <h3>RSVP</h3>
-          <button onclick="submitRSVP('going')">Going</button>
-          <button onclick="submitRSVP('maybe')">Maybe</button>
-          <button onclick="submitRSVP('not going')">Can't Go</button>
-        </div>
-
-        <div class="section">
-          <a href="${event.googleDriveLink || '#'}" target="_blank">
-            <button>View Event Photos (Google Drive)</button>
-          </a>
-        </div>
-
-        <script>
-          async function submitRSVP(status) {
-            try {
-              const response = await fetch('${process.env.API_BASE_URL}/api/rsvps/${eventId}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status })
-              });
-              const data = await response.json();
-              alert(data.message || 'RSVP submitted!');
-            } catch (err) {
-              alert('Failed to submit RSVP');
-            }
-          }
-        </script>
       </body>
       </html>
     `);
@@ -98,38 +57,17 @@ router.get('/share/:eventId', async (req, res) => {
 });
 
 // ------------------------
-// GET all events for authenticated user
-// ------------------------
-router.get('/', auth, async (req, res) => {
-  try {
-    const eventsSnapshot = await db.collection('events')
-      .where('hostUserId', '==', req.user.uid)
-      .get();
-
-    const events = [];
-    eventsSnapshot.forEach(doc => events.push({ id: doc.id, ...doc.data() }));
-    res.json(events);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ------------------------
-// GET specific event
+// GET specific event (must come AFTER /share/:eventId)
 // ------------------------
 router.get('/:id', auth, async (req, res) => {
   try {
     const eventDoc = await db.collection('events').doc(req.params.id).get();
 
-    if (!eventDoc.exists) return res.status(404).json({ error: 'Event not found' });
+    if (!eventDoc.exists) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
 
-    const eventData = eventDoc.data();
-    res.json({
-      id: eventDoc.id,
-      ...eventData,
-      hasDriveLink: !!eventData.googleDriveLink,
-      driveLinkStatus: eventData.googleDriveLink ? "Media sharing enabled" : "No media folder set up"
-    });
+    res.json({ id: eventDoc.id, ...eventDoc.data() });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
