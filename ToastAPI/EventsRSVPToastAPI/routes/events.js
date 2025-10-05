@@ -18,10 +18,10 @@ router.get('/test-no-auth', (req, res) => {
 router.get('/test-with-auth', auth, (req, res) => {
   console.log('✅ /api/events/test-with-auth route hit!');
   console.log('👤 User UID:', req.user?.uid);
-  res.json({ 
-    message: 'Test with auth works!', 
+  res.json({
+    message: 'Test with auth works!',
     user: req.user?.uid,
-    email: req.user?.email 
+    email: req.user?.email
   });
 });
 
@@ -55,6 +55,15 @@ router.get('/share/:eventId', async (req, res) => {
           input, select, button { margin-top: 6px; padding: 8px; width: 100%; max-width: 400px; }
           button { cursor: pointer; }
           .section { margin-top: 16px; }
+          a.button-link {
+            display: inline-block;
+            background: #4285F4;
+            color: #fff;
+            padding: 10px 14px;
+            border-radius: 4px;
+            text-decoration: none;
+            margin-top: 8px;
+          }
         </style>
       </head>
       <body>
@@ -63,6 +72,15 @@ router.get('/share/:eventId', async (req, res) => {
         <p><strong>Location:</strong> ${event.location}</p>
         <p><strong>Description:</strong> ${event.description}</p>
         <p><strong>Going:</strong> ${event.attendeeCount || 0}</p>
+
+        ${
+          event.googleDriveLink
+            ? `<p><strong>Google Drive Folder:</strong><br>
+                <a href="${event.googleDriveLink}" target="_blank" class="button-link">
+                  Open Drive Folder
+                </a></p>`
+            : `<p style="color:#888;">No Google Drive link provided.</p>`
+        }
 
         <div class="section">
           <label>Dietary Requirement / Option:</label>
@@ -103,15 +121,15 @@ router.get('/share/:eventId', async (req, res) => {
             }
 
             try {
-              const response = await fetch('${process.env.API_BASE_URL}/api/events/rsvps/${eventId}', {
+              const response = await fetch('/api/events/rsvps/${eventId}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   status,
                   dietaryChoice: dietary,
                   musicChoice: song,
-                  userName: 'Anonymous',  // optionally fetch from login
-                  userEmail: ''            // optionally fetch from login
+                  userName: 'Anonymous',
+                  userEmail: ''
                 })
               });
 
@@ -129,6 +147,7 @@ router.get('/share/:eventId', async (req, res) => {
       </html>
     `);
   } catch (err) {
+    console.error('❌ Error loading share page:', err);
     res.status(500).send('<h1>Server error</h1>');
   }
 });
@@ -169,13 +188,63 @@ router.post('/rsvps/:eventId', async (req, res) => {
 
     res.json({ message: 'RSVP submitted successfully', attendeeCount });
   } catch (error) {
-    console.error('RSVP submission failed:', error);
+    console.error('❌ RSVP submission failed:', error);
     res.status(500).json({ error: 'Failed to submit RSVP' });
   }
 });
 
 // ------------------------
-// Other routes (events CRUD, polls, etc.) remain unchanged
+// Sanitize helper for Drive links
+// ------------------------
+function sanitizeLink(link) {
+  if (!link) return '';
+  return link.startsWith('http') ? link : `https://${link}`;
+}
+
+// ------------------------
+// Create new event
+// ------------------------
+router.post('/', auth, async (req, res) => {
+  try {
+    const {
+      title, date, time, location, description, category,
+      dietaryRequirements = [], musicSuggestions = [], googleDriveLink = ""
+    } = req.body;
+
+    const sanitizedLink = sanitizeLink(googleDriveLink);
+
+    const eventData = {
+      title,
+      date,
+      time,
+      location,
+      description,
+      category: category || 'General',
+      dietaryRequirements: Array.isArray(dietaryRequirements) ? dietaryRequirements : [],
+      musicSuggestions: Array.isArray(musicSuggestions) ? musicSuggestions : [],
+      pollResponses: {},
+      googleDriveLink: sanitizedLink,
+      hostUserId: req.user.uid,
+      hostEmail: req.user.email || 'unknown',
+      createdAt: new Date().toISOString(),
+      attendeeCount: 0,
+      rsvps: {}
+    };
+
+    const docRef = await db.collection('events').add(eventData);
+    res.status(201).json({
+      message: 'Event created successfully',
+      eventId: docRef.id,
+      googleDriveLink: eventData.googleDriveLink
+    });
+  } catch (error) {
+    console.error('❌ Event creation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ------------------------
+// Get single event (auth required)
 // ------------------------
 router.get('/:id', auth, async (req, res) => {
   try {
@@ -187,38 +256,5 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-router.post('/', auth, async (req, res) => {
-  try {
-    const {
-      title, date, time, location, description, category,
-      dietaryRequirements = [], musicSuggestions = [], googleDriveLink = ""
-    } = req.body;
-
-    const eventData = {
-      title, date, time, location, description,
-      category: category || 'General',
-      dietaryRequirements: Array.isArray(dietaryRequirements) ? dietaryRequirements : [],
-      musicSuggestions: Array.isArray(musicSuggestions) ? musicSuggestions : [],
-      pollResponses: {},
-      googleDriveLink,
-      hostUserId: req.user.uid,
-      hostEmail: req.user.email || 'unknown',
-      createdAt: new Date().toISOString(),
-      attendeeCount: 0,
-      rsvps: {}
-    };
-
-    const docRef = await db.collection('events').add(eventData);
-    res.status(201).json({ 
-      message: 'Event created successfully', 
-      eventId: docRef.id,
-      googleDriveLink: eventData.googleDriveLink
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 console.log('✅ All events routes defined');
-
 module.exports = router;
