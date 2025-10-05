@@ -1,46 +1,21 @@
-// Imports
+// events.js
 const express = require('express');
 const router = express.Router();
 const { db } = require('../models/firebase');
-const auth = require('../middleware/auth');
-
-// ✅ Logs when router loads
-console.log('✅ Events router loaded');
 
 // ------------------------
-// Test Routes
-// ------------------------
-router.get('/test-no-auth', (req, res) => {
-  console.log('✅ /api/events/test-no-auth route hit!');
-  res.json({ message: 'Test no auth works!' });
-});
-
-router.get('/test-with-auth', auth, (req, res) => {
-  console.log('✅ /api/events/test-with-auth route hit!');
-  console.log('👤 User UID:', req.user?.uid);
-  res.json({
-    message: 'Test with auth works!',
-    user: req.user?.uid,
-    email: req.user?.email
-  });
-});
-
-// ------------------------
-// SHARE RSVP PAGE
+// Share RSVP page
 // ------------------------
 router.get('/share/:eventId', async (req, res) => {
   try {
     const eventId = req.params.eventId;
     const eventDoc = await db.collection('events').doc(eventId).get();
 
-    if (!eventDoc.exists) {
-      return res.status(404).send('<h1>Event not found</h1>');
-    }
+    if (!eventDoc.exists) return res.status(404).send('<h1>Event not found</h1>');
 
     const event = eventDoc.data();
     const dietaryOptions = event.dietaryRequirements || [];
 
-    // HTML page for RSVP
     res.send(`
       <!DOCTYPE html>
       <html lang="en">
@@ -55,15 +30,6 @@ router.get('/share/:eventId', async (req, res) => {
           input, select, button { margin-top: 6px; padding: 8px; width: 100%; max-width: 400px; }
           button { cursor: pointer; }
           .section { margin-top: 16px; }
-          a.button-link {
-            display: inline-block;
-            background: #4285F4;
-            color: #fff;
-            padding: 10px 14px;
-            border-radius: 4px;
-            text-decoration: none;
-            margin-top: 8px;
-          }
         </style>
       </head>
       <body>
@@ -71,16 +37,26 @@ router.get('/share/:eventId', async (req, res) => {
         <p><strong>Date:</strong> ${event.date} ${event.time}</p>
         <p><strong>Location:</strong> ${event.location}</p>
         <p><strong>Description:</strong> ${event.description}</p>
-        <p><strong>Going:</strong> ${event.attendeeCount || 0}</p>
 
-        ${
-          event.googleDriveLink
-            ? `<p><strong>Google Drive Folder:</strong><br>
-                <a href="${event.googleDriveLink}" target="_blank" class="button-link">
-                  Open Drive Folder
-                </a></p>`
-            : `<p style="color:#888;">No Google Drive link provided.</p>`
-        }
+        <div class="section">
+          <label>First Name:</label>
+          <input type="text" id="firstName" placeholder="Enter your first name" />
+        </div>
+
+        <div class="section">
+          <label>Surname:</label>
+          <input type="text" id="surname" placeholder="Enter your surname" />
+        </div>
+
+        <div class="section">
+          <label>RSVP Status:</label>
+          <select id="rsvpStatus">
+            <option value="">Select your status</option>
+            <option value="going">Going</option>
+            <option value="maybe">Maybe</option>
+            <option value="not going">Can't Go</option>
+          </select>
+        </div>
 
         <div class="section">
           <label>Dietary Requirement / Option:</label>
@@ -96,165 +72,97 @@ router.get('/share/:eventId', async (req, res) => {
         </div>
 
         <div class="section">
-          <label>RSVP Status:</label>
-          <select id="rsvpStatus">
-            <option value="">Select your status</option>
-            <option value="going">Going</option>
-            <option value="maybe">Maybe</option>
-            <option value="not going">Can't Go</option>
-          </select>
-        </div>
-
-        <div class="section">
           <button id="submitRSVPButton">Submit RSVP</button>
         </div>
 
         <script>
           document.getElementById('submitRSVPButton').addEventListener('click', async () => {
+            const firstName = document.getElementById('firstName').value.trim();
+            const surname = document.getElementById('surname').value.trim();
+            const status = document.getElementById('rsvpStatus').value;
             const dietary = document.getElementById('dietary').value;
             const song = document.getElementById('song').value;
-            const status = document.getElementById('rsvpStatus').value;
 
-            if (!status) {
-              alert('Please select your RSVP status.');
-              return;
-            }
+            if (!firstName || !surname) return alert('Please enter your full name.');
+            if (!status) return alert('Please select your RSVP status.');
+
+            const fullName = firstName + ' ' + surname;
+            const guestId = 'guest_' + Date.now();
 
             try {
-              const response = await fetch('/api/events/rsvps/${eventId}', {
+              // Save RSVP
+              await fetch('/api/events/${eventId}/rsvps', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  status,
-                  dietaryChoice: dietary,
-                  musicChoice: song,
-                  userName: 'Anonymous',
-                  userEmail: ''
-                })
+                body: JSON.stringify({ guestId, userName: fullName, status })
               });
 
-              const data = await response.json();
-              alert(data.message || 'RSVP submitted successfully!');
+              // Save preferences
+              await fetch('/api/events/${eventId}/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guestId, dietaryChoice: dietary || 'Not specified', musicChoice: song || 'Not specified' })
+              });
+
+              alert('RSVP submitted successfully!');
               window.location.reload();
             } catch (err) {
-              alert('Failed to submit RSVP');
               console.error(err);
+              alert('Failed to submit RSVP.');
             }
           });
         </script>
-
       </body>
       </html>
     `);
   } catch (err) {
-    console.error('❌ Error loading share page:', err);
+    console.error(err);
     res.status(500).send('<h1>Server error</h1>');
   }
 });
 
 // ------------------------
-// RSVP submission route
+// RSVP subcollection
 // ------------------------
-router.post('/rsvps/:eventId', async (req, res) => {
+router.post('/:eventId/rsvps', async (req, res) => {
   try {
     const { eventId } = req.params;
-    const { status, dietaryChoice, musicChoice, userName, userEmail } = req.body;
+    const { guestId, userName, status } = req.body;
 
-    if (!status) {
-      return res.status(400).json({ error: 'RSVP status is required' });
-    }
+    if (!guestId || !userName || !status) return res.status(400).json({ error: 'Missing RSVP data' });
 
-    const eventRef = db.collection('events').doc(eventId);
-    const eventDoc = await eventRef.get();
-
-    if (!eventDoc.exists) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-
-    const rsvps = eventDoc.data().rsvps || {};
-    const uid = userEmail || `guest_${Date.now()}`;
-
-    rsvps[uid] = {
+    const rsvpRef = db.collection('events').doc(eventId).collection('rsvps').doc(guestId);
+    await rsvpRef.set({
+      userName,
       status,
-      dietaryChoice: dietaryChoice || 'Not specified',
-      musicChoice: musicChoice || 'Not specified',
-      userName: userName || 'Anonymous',
       respondedAt: new Date().toISOString()
-    };
-
-    const attendeeCount = Object.values(rsvps).filter(r => r.status === 'going').length;
-
-    await eventRef.update({ rsvps, attendeeCount });
-
-    res.json({ message: 'RSVP submitted successfully', attendeeCount });
-  } catch (error) {
-    console.error('❌ RSVP submission failed:', error);
-    res.status(500).json({ error: 'Failed to submit RSVP' });
-  }
-});
-
-// ------------------------
-// Sanitize helper for Drive links
-// ------------------------
-function sanitizeLink(link) {
-  if (!link) return '';
-  return link.startsWith('http') ? link : `https://${link}`;
-}
-
-// ------------------------
-// Create new event
-// ------------------------
-router.post('/', auth, async (req, res) => {
-  try {
-    const {
-      title, date, time, location, description, category,
-      dietaryRequirements = [], musicSuggestions = [], googleDriveLink = ""
-    } = req.body;
-
-    const sanitizedLink = sanitizeLink(googleDriveLink);
-
-    const eventData = {
-      title,
-      date,
-      time,
-      location,
-      description,
-      category: category || 'General',
-      dietaryRequirements: Array.isArray(dietaryRequirements) ? dietaryRequirements : [],
-      musicSuggestions: Array.isArray(musicSuggestions) ? musicSuggestions : [],
-      pollResponses: {},
-      googleDriveLink: sanitizedLink,
-      hostUserId: req.user.uid,
-      hostEmail: req.user.email || 'unknown',
-      createdAt: new Date().toISOString(),
-      attendeeCount: 0,
-      rsvps: {}
-    };
-
-    const docRef = await db.collection('events').add(eventData);
-    res.status(201).json({
-      message: 'Event created successfully',
-      eventId: docRef.id,
-      googleDriveLink: eventData.googleDriveLink
     });
-  } catch (error) {
-    console.error('❌ Event creation failed:', error);
-    res.status(500).json({ error: error.message });
+
+    res.json({ message: 'RSVP saved!' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save RSVP' });
   }
 });
 
 // ------------------------
-// Get single event (auth required)
+// Preferences subcollection
 // ------------------------
-router.get('/:id', auth, async (req, res) => {
+router.post('/:eventId/preferences', async (req, res) => {
   try {
-    const eventDoc = await db.collection('events').doc(req.params.id).get();
-    if (!eventDoc.exists) return res.status(404).json({ error: 'Event not found' });
-    res.json({ id: eventDoc.id, ...eventDoc.data() });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    const { eventId } = req.params;
+    const { guestId, dietaryChoice, musicChoice } = req.body;
+
+    if (!guestId) return res.status(400).json({ error: 'Missing guestId' });
+
+    const prefRef = db.collection('events').doc(eventId).collection('preferences').doc(guestId);
+    await prefRef.set({ dietaryChoice, musicChoice });
+
+    res.json({ message: 'Preferences saved!' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save preferences' });
   }
 });
 
-console.log('✅ All events routes defined');
 module.exports = router;
