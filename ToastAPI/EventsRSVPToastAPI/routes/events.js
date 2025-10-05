@@ -2,6 +2,47 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../models/firebase');
+// ------------------------
+// Create new event
+// ------------------------
+router.post('/', async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      date,
+      time,
+      location,
+      category,
+      googleDriveLink,
+      dietaryRequirements = [],
+      musicSuggestions = []
+    } = req.body;
+
+    if (!title || !date || !time || !location) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Add event to Firestore
+    const eventRef = await db.collection('events').add({
+      title,
+      description,
+      date,
+      time,
+      location,
+      category,
+      googleDriveLink,
+      dietaryRequirements,
+      musicSuggestions,
+      createdAt: new Date().toISOString(),
+    });
+
+    res.status(201).json({ message: 'Event created successfully', eventId: eventRef.id });
+  } catch (err) {
+    console.error('Error creating event:', err);
+    res.status(500).json({ error: 'Failed to create event' });
+  }
+});
 
 // ------------------------
 // Share RSVP page
