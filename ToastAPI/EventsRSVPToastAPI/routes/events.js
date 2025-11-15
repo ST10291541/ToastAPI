@@ -239,40 +239,57 @@ router.post('/:eventId/rsvps', async (req, res) => {
     }
 
     // Save RSVP
-    const rsvpRef = db.collection('events')
-      .doc(eventId)
-      .collection('rsvps')
-      .doc(guestId);
-
+    const rsvpRef = db.collection('events').doc(eventId).collection('rsvps').doc(guestId);
     await rsvpRef.set({
       userName,
       status,
       respondedAt: new Date().toISOString()
     });
 
-    // Count "going"
-    const rsvps = await db.collection('events')
-      .doc(eventId)
-      .collection('rsvps')
-      .get();
+    // Update attendee count
+    const rsvpsSnapshot = await db.collection('events').doc(eventId).collection('rsvps').get();
+    const attendeeCount = rsvpsSnapshot.docs.filter(doc => doc.data().status === 'going').length;
+    await db.collection('events').doc(eventId).update({ attendeeCount });
 
-    const attendeeCount = rsvps.docs.filter(d => d.data().status === 'going').length;
+    // ───────────────────────────────────────────────
+    // Send FCM Notification to Event Host (if enabled)
+    // ───────────────────────────────────────────────
+    const eventDoc = await db.collection('events').doc(eventId).get();
+    if (!eventDoc.exists) return res.status(404).json({ error: 'Event not found' });
 
-    await db.collection('events')
-      .doc(eventId)
-      .update({ attendeeCount });
+    const event = eventDoc.data();
+    if (!event.hostId) return res.status(400).json({ error: 'Host not found' });
 
-    // 🔥 SEND NOTIFICATION HERE
-    await sendRSVPNotification(eventId, userName);
+    // Fetch host document once
+    const hostDoc = await db.collection('users').doc(event.hostId).get();
+    const hostData = hostDoc.data();
 
-    // Response
-    res.json({ message: 'RSVP saved!', attendeeCount });
+    // Only send notification if enabled and token exists
+    if (hostData?.notificationsEnabled && hostData.fcmToken) {
+      const message = {
+        token: hostData.fcmToken,
+        notification: {
+          title: "New RSVP Received",
+          body: `${userName} has RSVP'd: ${status}`
+        },
+        data: { eventId, guestId, status }
+      };
+
+      await admin.messaging().send(message);
+      console.log("FCM sent successfully!");
+    } else {
+      console.log("Host notifications disabled or token missing — skipping push");
+    }
+    // ───────────────────────────────────────────────
+
+    res.json({ message: "RSVP saved!", attendeeCount });
 
   } catch (err) {
-    console.error('RSVP Error:', err);
-    res.status(500).json({ error: 'Failed to save RSVP' });
+    console.error(err);
+    res.status(500).json({ error: "Failed to save RSVP" });
   }
 });
+
 
 // ------------------------
 // Poll responses
