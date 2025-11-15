@@ -3,8 +3,9 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../models/firebase');
 const auth = require('../middleware/auth');
+const { sendRSVPNotification } = require("../utils/sendNotification");
 
-// ✅ Logs when router loads
+// Logs when router loads
 console.log('✅ Events router loaded');
 
 // ------------------------
@@ -77,7 +78,7 @@ router.post('/', auth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Event creation failed:', error);
+    console.error('Event creation failed:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -221,7 +222,7 @@ router.get('/share/:eventId', async (req, res) => {
       </html>
     `);
   } catch (err) {
-    console.error('❌ Error loading share page:', err);
+    console.error(' Error loading share page:', err);
     res.status(500).send('<h1>Server error</h1>');
   }
 });
@@ -232,19 +233,43 @@ router.post('/:eventId/rsvps', async (req, res) => {
   try {
     const { eventId } = req.params;
     const { guestId, userName, status } = req.body;
-    if (!guestId || !userName || !status) return res.status(400).json({ error: 'Missing RSVP data' });
 
-    const rsvpRef = db.collection('events').doc(eventId).collection('rsvps').doc(guestId);
-    await rsvpRef.set({ userName, status, respondedAt: new Date().toISOString() });
+    if (!guestId || !userName || !status) {
+      return res.status(400).json({ error: 'Missing RSVP data' });
+    }
 
-    // Update attendee count
-    const rsvps = await db.collection('events').doc(eventId).collection('rsvps').get();
-    const attendeeCount = rsvps.docs.filter(doc => doc.data().status === 'going').length;
-    await db.collection('events').doc(eventId).update({ attendeeCount });
+    // Save RSVP
+    const rsvpRef = db.collection('events')
+      .doc(eventId)
+      .collection('rsvps')
+      .doc(guestId);
 
+    await rsvpRef.set({
+      userName,
+      status,
+      respondedAt: new Date().toISOString()
+    });
+
+    // Count "going"
+    const rsvps = await db.collection('events')
+      .doc(eventId)
+      .collection('rsvps')
+      .get();
+
+    const attendeeCount = rsvps.docs.filter(d => d.data().status === 'going').length;
+
+    await db.collection('events')
+      .doc(eventId)
+      .update({ attendeeCount });
+
+    // 🔥 SEND NOTIFICATION HERE
+    await sendRSVPNotification(eventId, userName);
+
+    // Response
     res.json({ message: 'RSVP saved!', attendeeCount });
+
   } catch (err) {
-    console.error(err);
+    console.error('RSVP Error:', err);
     res.status(500).json({ error: 'Failed to save RSVP' });
   }
 });
@@ -309,5 +334,5 @@ router.get('/:eventId/poll-results', auth, async (req, res) => {
   }
 });
 
-console.log('✅ All events routes defined');
+console.log('All events routes defined');
 module.exports = router;
